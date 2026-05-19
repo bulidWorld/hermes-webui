@@ -1,0 +1,9 @@
+{
+  "pid": 2922340,
+  "startedAt": 1779089668088,
+  "command": "dev",
+  "cwd": "/opt/apps/hermes-webui",
+  "port": 10599,
+  "hostname": "0.0.0.0",
+  "url": "http://0.0.0.0:10599"
+}

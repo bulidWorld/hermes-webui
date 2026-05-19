@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+
+/* Markdown content styling */
+.markdown-body h1 { @apply text-xl font-bold mb-3 mt-4; }
+.markdown-body h2 { @apply text-lg font-bold mb-2 mt-3; }
+.markdown-body h3 { @apply text-base font-semibold mb-1 mt-2; }
+.markdown-body p { @apply mb-2 leading-relaxed; }
+.markdown-body ul { @apply list-disc pl-5 mb-2; }
+.markdown-body ol { @apply list-decimal pl-5 mb-2; }
+.markdown-body li { @apply mb-1; }
+.markdown-body code {
+  @apply bg-gray-800 text-pink-300 px-1.5 py-0.5 rounded text-sm font-mono;
+}
+.markdown-body pre {
+  @apply bg-gray-900 border border-gray-700 rounded-lg p-4 mb-3 overflow-x-auto;
+}
+.markdown-body pre code {
+  @apply bg-transparent text-gray-200 p-0;
+}
+.markdown-body blockquote {
+  @apply border-l-2 border-gray-600 pl-3 text-gray-400 italic mb-2;
+}
+.markdown-body a {
+  @apply text-blue-400 underline hover:text-blue-300;
+}
+.markdown-body table {
+  @apply w-full border-collapse mb-3;
+}
+.markdown-body th {
+  @apply bg-gray-800 border border-gray-700 px-3 py-1.5 text-left text-sm font-semibold;
+}
+.markdown-body td {
+  @apply border border-gray-700 px-3 py-1.5 text-sm;
+}
