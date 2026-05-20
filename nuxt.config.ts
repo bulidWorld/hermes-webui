@@ -6,6 +6,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     hermesApiBase: 'http://127.0.0.1:8642',
     hermesApiKey: '',
+    authSecret: '',
+    ldapUrl: '',
+    ldapBindDn: '',
+    ldapBindPw: '',
+    ldapBaseDn: '',
   },
   devServer: {
     host: '0.0.0.0',

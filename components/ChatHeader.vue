@@ -6,11 +6,13 @@ defineProps<{
   runState: RunState
   sessionId: string | null
   isRunning: boolean
+  userId: string | null
 }>()
 
 const emit = defineEmits<{
   stop: []
   clear: []
+  logout: []
 }>()
 </script>
 
@@ -21,15 +23,12 @@ const emit = defineEmits<{
       <ConnectionIndicator :state="connectionState" />
     </div>
 
-    <div class="flex items-center gap-2">
-      <!-- Session ID badge -->
+    <div class="flex items-center gap-3">
+      <!-- User name -->
       <span
-        v-if="sessionId"
-        class="text-[10px] text-gray-600 bg-gray-800 px-2 py-0.5 rounded-full font-mono max-w-[120px] truncate"
-        :title="sessionId"
-      >
-        {{ sessionId.slice(0, 12) }}...
-      </span>
+        v-if="userId"
+        class="text-xs text-gray-400"
+      >{{ userId }}</span>
 
       <!-- Stop button -->
       <button
@@ -46,6 +45,14 @@ const emit = defineEmits<{
         @click="$emit('clear')"
       >
         Clear
+      </button>
+
+      <!-- Logout -->
+      <button
+        class="px-3 py-1 text-xs font-medium text-gray-500 hover:text-red-400 hover:bg-gray-800 rounded-full transition-colors"
+        @click="$emit('logout')"
+      >
+        Logout
       </button>
     </div>
   </div>

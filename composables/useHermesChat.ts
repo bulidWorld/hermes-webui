@@ -9,7 +9,6 @@ import { makeId } from '~/types/hermes'
 import { applySSEEvent } from '~/utils/timeline-builder'
 
 export function useHermesChat() {
-  // ── State ──
   const timeline = ref<TimelineEntry[]>([])
   const runState = ref<RunState>('idle')
   const currentRunId = ref<string | null>(null)
@@ -18,25 +17,53 @@ export function useHermesChat() {
   const inputText = ref('')
   const usage = ref<{ input_tokens: number; output_tokens: number; total_tokens: number } | null>(null)
 
-  // ── Sub-modules ──
-  const { sessionId, load: loadSession, save: saveSession, clear: clearSession } = useSessionStore()
+  const { userId, sessionId, updateSession, fetchMe } = useAuth()
   const { connect: sseConnect, disconnect: sseDisconnect, isConnected } = useSSE()
   const containerRef = ref<HTMLElement | null>(null)
   const { stickToBottom, onScroll, scrollToBottom, reset: resetScroll } = useAutoScroll(containerRef)
 
-  // ── Computed ──
   const isRunning = computed(() => runState.value === 'running' || runState.value === 'waiting_approval')
   const canSend = computed(() => runState.value === 'idle' && inputText.value.trim().length > 0)
 
-  // Auto-scroll when timeline changes
-  watch(() => timeline.value.length, () => {
-    nextTick(() => scrollToBottom())
+  watch(() => timeline.value.length, () => { nextTick(() => scrollToBottom()) })
+
+  // ── Load auth + history on mount ──
+  onMounted(async () => {
+    await fetchMe()
+    if (userId.value) {
+      await loadHistory()
+    }
   })
 
-  // Load session on init
-  onMounted(() => {
-    loadSession()
-  })
+  async function loadHistory() {
+    try {
+      const res = await $fetch<{ messages: Array<{ role: string; content: string }>; sessionId: string | null }>(
+        '/api/hermes/sessions/current'
+      )
+      if (res.messages && res.messages.length > 0) {
+        const entries: TimelineEntry[] = []
+        for (const msg of res.messages) {
+          if (msg.role === 'user') {
+            entries.push({
+              id: makeId(), kind: 'message', role: 'user',
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+              isStreaming: false, timestamp: 0,
+            })
+          } else if (msg.role === 'assistant') {
+            entries.push({
+              id: makeId(), kind: 'message', role: 'assistant',
+              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+              isStreaming: false, timestamp: 0,
+            })
+          }
+        }
+        timeline.value = entries
+        nextTick(() => scrollToBottom(true))
+      }
+    } catch (err: any) {
+      console.error('Failed to load history:', err.message)
+    }
+  }
 
   // ── SSE event handler ──
   function handleSSEEvent(event: SSEEvent) {
@@ -50,11 +77,14 @@ export function useHermesChat() {
       runState.value = 'running'
     } else if (event.event === 'run.completed') {
       runState.value = 'idle'
-      usage.value = event.usage
+      usage.value = 'usage' in event ? (event as any).usage : null
       pendingApproval.value = null
+      // Update server session mapping (compression may have rotated session_id)
+      const sid = (event as any).session_id
+      if (sid) updateSession(sid)
     } else if (event.event === 'run.failed') {
       runState.value = 'idle'
-      error.value = event.error
+      error.value = 'error' in event ? (event as any).error : null
       pendingApproval.value = null
     } else if (event.event === 'run.cancelled') {
       runState.value = 'idle'
@@ -72,49 +102,24 @@ export function useHermesChat() {
     error.value = null
     usage.value = null
 
-    // Push user message to timeline
     const userMsg: MessageEntry = {
-      id: makeId(),
-      kind: 'message',
-      role: 'user',
-      content: msg,
-      isStreaming: false,
-      timestamp: Date.now() / 1000,
+      id: makeId(), kind: 'message', role: 'user',
+      content: msg, isStreaming: false, timestamp: Date.now() / 1000,
     }
     timeline.value = [...timeline.value, userMsg]
     resetScroll()
     nextTick(() => scrollToBottom(true))
 
-    // Build conversation history from timeline
-    const history = buildConversationHistory(timeline.value.slice(0, -1))
-
     runState.value = 'running'
 
     try {
-      const body: any = {
-        input: msg,
-        conversation_history: history,
-      }
-      if (sessionId.value) {
-        body.session_id = sessionId.value
-      }
-
-      const response = await $fetch<{ run_id: string; session_id?: string }>('/api/hermes/runs', {
-        method: 'POST',
-        body,
+      const body: any = { input: msg }
+      const response = await $fetch<{ run_id: string }>('/api/hermes/runs', {
+        method: 'POST', body,
       })
 
       currentRunId.value = response.run_id
 
-      // Update session ID if the server returned one
-      if (response.session_id) {
-        saveSession(response.session_id)
-      } else {
-        // Server may return session_id in headers
-        saveSession(response.run_id)
-      }
-
-      // Start SSE subscription
       sseConnect(
         response.run_id,
         handleSSEEvent,
@@ -123,9 +128,7 @@ export function useHermesChat() {
           error.value = `Connection lost: ${err.message}. Try sending another message.`
           runState.value = 'idle'
         },
-        () => {
-          // SSE connection closed normally
-        },
+        () => { /* closed */ },
       )
     } catch (err: any) {
       runState.value = 'idle'
@@ -137,38 +140,23 @@ export function useHermesChat() {
     if (!currentRunId.value) return
     runState.value = 'stopping'
     sseDisconnect()
-    try {
-      await $fetch(`/api/hermes/runs/${currentRunId.value}/stop`, { method: 'POST', body: {} })
-    } catch {
-      // Graceful — server may already have stopped
-    }
+    try { await $fetch(`/api/hermes/runs/${currentRunId.value}/stop`, { method: 'POST', body: {} }) } catch {}
     runState.value = 'idle'
   }
 
   async function resolveApproval(choice: string) {
     if (!currentRunId.value) return
     try {
-      await $fetch(`/api/hermes/runs/${currentRunId.value}/approval`, {
-        method: 'POST',
-        body: { choice },
-      })
+      await $fetch(`/api/hermes/runs/${currentRunId.value}/approval`, { method: 'POST', body: { choice } })
       pendingApproval.value = null
       runState.value = 'running'
     } catch (err: any) {
-      // 409: approval expired or already resolved — just close the modal
       if (err?.response?.status === 409) {
         pendingApproval.value = null
         error.value = 'This approval has expired (run already completed or timed out).'
         return
       }
       error.value = `Failed to send approval: ${err.message}`
-    }
-  }
-
-  function dismissApproval() {
-    // Auto-deny: the approval was stale or timed out
-    if (pendingApproval.value) {
-      resolveApproval('deny').catch(() => {})
     }
   }
 
@@ -180,42 +168,14 @@ export function useHermesChat() {
     pendingApproval.value = null
     error.value = null
     usage.value = null
-    clearSession()
     resetScroll()
   }
 
-  // ── Helpers ──
-
-  function buildConversationHistory(entries: TimelineEntry[]): Array<{ role: string; content: string }> {
-    return entries
-      .filter((e): e is MessageEntry => e.kind === 'message')
-      .map((e) => ({
-        role: e.role,
-        content: e.content,
-      }))
-  }
-
   return {
-    // State
-    timeline,
-    runState,
-    currentRunId,
-    pendingApproval,
-    error,
-    inputText,
-    usage,
-    isRunning,
-    canSend,
-    isConnected,
-    sessionId,
-    containerRef,
-    stickToBottom,
-    // Actions
-    sendMessage,
-    stopRun,
-    resolveApproval,
-    dismissApproval,
-    clearChat,
-    onScroll,
+    timeline, runState, currentRunId, pendingApproval, error,
+    inputText, usage, isRunning, canSend, isConnected,
+    userId, sessionId,
+    containerRef, stickToBottom,
+    sendMessage, stopRun, resolveApproval, clearChat, onScroll,
   }
 }

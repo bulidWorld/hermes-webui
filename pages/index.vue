@@ -1,23 +1,13 @@
 <script setup lang="ts">
 
 const {
-  timeline,
-  runState,
-  pendingApproval,
-  error,
-  inputText,
-  isRunning,
-  canSend,
-  isConnected,
-  sessionId,
+  timeline, runState, pendingApproval, error, inputText,
+  isRunning, canSend, isConnected, userId, sessionId,
   containerRef,
-  sendMessage,
-  stopRun,
-  resolveApproval,
-  dismissApproval,
-  clearChat,
-  onScroll,
+  sendMessage, stopRun, resolveApproval, clearChat, onScroll,
 } = useHermesChat()
+
+const { logout } = useAuth()
 
 const connectionState = computed(() => {
   if (isConnected.value) return 'connected' as const
@@ -33,8 +23,10 @@ const connectionState = computed(() => {
       :run-state="runState"
       :session-id="sessionId"
       :is-running="isRunning"
+      :user-id="userId"
       @stop="stopRun"
       @clear="clearChat"
+      @logout="logout"
     />
 
     <Timeline
@@ -54,7 +46,7 @@ const connectionState = computed(() => {
     <ApprovalModal
       :event="pendingApproval"
       @resolve="resolveApproval"
-      @dismiss="dismissApproval"
+      @dismiss="resolveApproval('deny')"
     />
   </div>
 </template>

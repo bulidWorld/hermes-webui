@@ -1,9 +1,0 @@
-{
-  "_hash": "fUlKKk7V76uFdNHaV60PpiYyDzz18BOVYJHfsdrBRXI",
-  "project": {
-    "rootDir": "/opt/apps/hermes-webui"
-  },
-  "versions": {
-    "nuxt": "3.21.5"
-  }
-}
