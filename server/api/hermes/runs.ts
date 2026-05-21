@@ -59,7 +59,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
 
   // Read auth cookie for user context
-  const userId = getUserIdFromCookie(event)
+  const userId = await getUserIdFromCookie(event)
   const sessionId = body.session_id || (userId ? getSessionId(userId) : null)
 
   // Auto-load conversation history from state.db if session exists

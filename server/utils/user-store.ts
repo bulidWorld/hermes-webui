@@ -1,41 +1,72 @@
-import { createHmac } from 'node:crypto'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { homedir } from 'node:os'
+import { logger } from '~/server/utils/logger'
 
-// ── LDAP Auth ──
+// ── Auth ──
 
-async function ldapAuth(userId: string, password: string, config: {
-  ldapUrl: string; ldapBindDn: string; ldapBindPw: string; ldapBaseDn: string
-}): Promise<boolean> {
+export async function validateUser(username: string, password: string): Promise<string | null> {
+  const config = useRuntimeConfig()
+  const url = config.authApiUrl as string
+
   try {
-    const ldapjs = await import('ldapjs')
-    const client = ldapjs.createClient({ url: config.ldapUrl, timeout: 5000 })
-
-    return new Promise((resolve) => {
-      client.bind(config.ldapBindDn, config.ldapBindPw, (err: any) => {
-        if (err) { client.destroy(); return resolve(false) }
-
-        const userDN = `cn=${userId},${config.ldapBaseDn}`
-        client.bind(userDN, password, (err2: any) => {
-          client.destroy()
-          resolve(!err2)
-        })
-      })
+    const res = await $fetch<{ access_token: string }>(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: { username, password },
     })
-  } catch {
-    return false
+    if (!res.access_token) {
+      logger.error('login response missing access_token', { label: 'auth', body: JSON.stringify(res) })
+      return null
+    }
+    logger.info('login success', { label: 'auth', username })
+    return res.access_token
+  } catch (err: any) {
+    logger.error('login API call failed', {
+      label: 'auth',
+      statusCode: err.statusCode,
+      statusMessage: err.statusMessage,
+      message: err.message,
+      body: err.data ? JSON.stringify(err.data) : undefined,
+    })
+    return null
   }
 }
 
-export async function validateUser(userId: string, password: string): Promise<boolean> {
+export async function validateToken(token: string): Promise<string | null> {
   const config = useRuntimeConfig()
-  return ldapAuth(userId, password, {
-    ldapUrl: config.ldapUrl,
-    ldapBindDn: config.ldapBindDn,
-    ldapBindPw: config.ldapBindPw,
-    ldapBaseDn: config.ldapBaseDn,
-  })
+  const url = config.authCenterUrl as string
+  const apiKey = config.authApiKey as string
+
+  if (!url) {
+    logger.error('authCenterUrl not configured', { label: 'auth' })
+    return null
+  }
+
+  try {
+    const res = await $fetch<{ valid: boolean; payload: { preferred_username: string } }>(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': apiKey,
+      },
+      body: { token },
+    })
+    if (!res.valid || !res.payload?.preferred_username) {
+      logger.warn('token verify rejected', { label: 'auth', valid: res.valid, payload: res.payload })
+      return null
+    }
+    return res.payload.preferred_username
+  } catch (err: any) {
+    logger.error('token verify call failed', {
+      label: 'auth',
+      statusCode: err.statusCode,
+      statusMessage: err.statusMessage,
+      message: err.message,
+      body: err.data ? JSON.stringify(err.data) : undefined,
+    })
+    return null
+  }
 }
 
 // ── Session mapping ──
@@ -58,13 +89,27 @@ function saveSessionMap(map: Record<string, SessionEntry>): void {
   const dir = resolve(homedir(), '.hermes')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   writeFileSync(SESSIONS_FILE, JSON.stringify(map, null, 2), 'utf-8')
+  logger.debug('session map saved', { label: 'session', path: SESSIONS_FILE, keys: Object.keys(map).length })
+}
+
+function ensureSessionDir(): void {
+  const dir = resolve(homedir(), '.hermes')
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
+  if (!existsSync(SESSIONS_FILE)) {
+    writeFileSync(SESSIONS_FILE, '{}', 'utf-8')
+    logger.info('session file initialized', { label: 'session', path: SESSIONS_FILE })
+  }
 }
 
 export function getSessionId(userId: string): string | null {
-  return loadSessionMap()[userId]?.sessionId || null
+  ensureSessionDir()
+  const sid = loadSessionMap()[userId]?.sessionId || null
+  logger.debug('get session id', { label: 'session', userId, found: !!sid })
+  return sid
 }
 
 export function saveSessionId(userId: string, sessionId: string): void {
+  logger.info('save session id', { label: 'session', userId, sessionId })
   const map = loadSessionMap()
   map[userId] = { sessionId, lastActive: new Date().toISOString() }
   saveSessionMap(map)
@@ -75,14 +120,7 @@ export function saveSessionId(userId: string, sessionId: string): void {
 const AUTH_COOKIE = 'hermes_auth'
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30
 
-function sign(data: string, secret: string): string {
-  return createHmac('sha256', secret).update(data).digest('hex')
-}
-
-export function setAuthCookie(event: any, userId: string): void {
-  const config = useRuntimeConfig()
-  const secret = config.authSecret || 'default-secret'
-  const token = `${userId}:${Date.now()}:${sign(`${userId}:${Date.now()}`, secret)}`
+export function setAuthCookie(event: any, token: string): void {
   setCookie(event, AUTH_COOKIE, token, {
     httpOnly: true, secure: false, sameSite: 'lax', path: '/', maxAge: COOKIE_MAX_AGE,
   })
@@ -92,17 +130,13 @@ export function clearAuthCookie(event: any): void {
   deleteCookie(event, AUTH_COOKIE, { path: '/' })
 }
 
-export function getUserIdFromCookie(event: any): string | null {
-  const config = useRuntimeConfig()
-  const secret = config.authSecret || 'default-secret'
+export async function getUserIdFromCookie(event: any): Promise<string | null> {
   const token = getCookie(event, AUTH_COOKIE)
   if (!token) return null
 
-  const parts = token.split(':')
-  if (parts.length < 3) return null
-  const sig = parts.pop()!
-  const payload = parts.join(':')
-  if (sig !== sign(payload, secret)) return null
-
-  return parts[0] || null
+  const userId = await validateToken(token)
+  if (!userId) {
+    logger.warn('cookie token validation failed', { label: 'auth' })
+  }
+  return userId
 }

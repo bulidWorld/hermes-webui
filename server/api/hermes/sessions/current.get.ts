@@ -40,7 +40,7 @@ function decodeContent(raw: string | null): string {
 }
 
 export default defineEventHandler(async (event) => {
-  const userId = getUserIdFromCookie(event)
+  const userId = await getUserIdFromCookie(event)
   if (!userId) {
     setResponseStatus(event, 401)
     return { error: 'Not authenticated' }
