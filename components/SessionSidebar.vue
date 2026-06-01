@@ -12,8 +12,9 @@ const emit = defineEmits<{
   'new-chat': []
 }>()
 
-function formatDate(iso: string): string {
-  const d = new Date(iso)
+function formatDate(ts: number): string {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
   const now = new Date()
   const diffMs = now.getTime() - d.getTime()
   const diffDays = Math.floor(diffMs / 86400000)
@@ -73,7 +74,7 @@ function formatDate(iso: string): string {
           {{ session.title || '新对话' }}
         </div>
         <div class="flex items-center gap-2 mt-1">
-          <span class="text-xs text-gray-500">{{ formatDate(session.updated_at) }}</span>
+          <span class="text-xs text-gray-500">{{ formatDate(session.last_active) }}</span>
           <span
             v-if="session.message_count"
             class="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-400"

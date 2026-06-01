@@ -156,7 +156,7 @@ export interface HermesSession {
   id: string
   user_id: string
   created_at: string
-  updated_at: string
+  last_active: number
   title?: string
   message_count?: number
 }
