@@ -25,7 +25,6 @@ defineProps<{
       <div class="bg-red-900/50 border border-red-600/50 rounded-xl px-4 py-2 text-xs text-red-300 font-medium">
         ✗ Command denied
       </div>
-      </div>
     </div>
     <div v-else-if="entry.kind === 'system'" class="flex justify-center my-3">
       <div
