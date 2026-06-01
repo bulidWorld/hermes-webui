@@ -150,6 +150,22 @@ export type TimelineEntry =
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error'
 export type RunState = 'idle' | 'running' | 'waiting_approval' | 'stopping'
 
+// ── Session types ──
+
+export interface HermesSession {
+  id: string
+  user_id: string
+  created_at: string
+  updated_at: string
+  title?: string
+  message_count?: number
+}
+
+export interface HermesSessionListResponse {
+  sessions: HermesSession[]
+  total: number
+}
+
 // ── Helper ──
 
 export function makeId(): string {

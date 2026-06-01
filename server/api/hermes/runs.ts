@@ -1,72 +1,12 @@
-import { getUserIdFromCookie, getSessionId } from '~/server/utils/user-store'
-import { DatabaseSync } from 'node:sqlite'
-import { resolve } from 'node:path'
-import { homedir } from 'node:os'
-
-const STATE_DB = resolve(homedir(), '.hermes', 'state.db')
-
-function decodeContent(raw: string | null): string {
-  if (!raw) return ''
-  if (raw.startsWith('\x00json:')) {
-    try {
-      const parsed = JSON.parse(raw.slice(6))
-      if (Array.isArray(parsed)) {
-        return parsed.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('\n')
-      }
-      return String(parsed)
-    } catch { return raw }
-  }
-  return raw
-}
-
-function loadConversationHistory(sessionId: string): Array<Record<string, any>> {
-  try {
-    const db = new DatabaseSync(STATE_DB, { readonly: true })
-    const allIds: string[] = []
-    let current = sessionId
-    while (current) {
-      allIds.push(current)
-      const parent = db.prepare('SELECT parent_session_id FROM sessions WHERE id = ?').get(current) as any
-      current = parent?.parent_session_id || ''
-    }
-
-    const placeholders = allIds.map(() => '?').join(',')
-    const rows = db.prepare(
-      `SELECT role, content, tool_calls, tool_call_id, tool_name, reasoning, reasoning_content, finish_reason
-       FROM messages WHERE session_id IN (${placeholders}) ORDER BY timestamp, id`
-    ).all(...allIds) as any[]
-
-    db.close()
-
-    return rows.map((row: any) => {
-      const msg: Record<string, any> = { role: row.role, content: decodeContent(row.content) }
-      if (row.tool_calls) { try { msg.tool_calls = JSON.parse(row.tool_calls) } catch { /* skip */ } }
-      if (row.tool_call_id) msg.tool_call_id = row.tool_call_id
-      if (row.tool_name) msg.tool_name = row.tool_name
-      if (row.reasoning) msg.reasoning = row.reasoning
-      if (row.reasoning_content) msg.reasoning_content = row.reasoning_content
-      if (row.finish_reason) msg.finish_reason = row.finish_reason
-      return msg
-    })
-  } catch (err: any) {
-    console.error('Failed to load conversation history:', err.message)
-    return []
-  }
-}
+import { getUserIdFromCookie } from '~/server/utils/user-store'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
   const body = await readBody(event)
 
-  // Read auth cookie for user context
   const userId = await getUserIdFromCookie(event)
-  const sessionId = body.session_id || (userId ? getSessionId(userId) : null)
-
-  // Auto-load conversation history from state.db if session exists
-  let conversationHistory = body.conversation_history || []
-  if (!conversationHistory.length && sessionId) {
-    conversationHistory = loadConversationHistory(sessionId)
-  }
+  const sessionId = body.session_id || null
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (sessionId) headers['X-Hermes-Session-Id'] = sessionId
@@ -83,16 +23,17 @@ export default defineEventHandler(async (event) => {
     input: body.input,
     instructions: body.instructions,
     model: body.model,
-  }
-  if (conversationHistory.length) {
-    forwardedBody.conversation_history = conversationHistory
+    user_id: userId || body.user_id,
   }
   if (sessionId) {
     forwardedBody.session_id = sessionId
   }
 
+  const url = `${config.hermesApiBase}/v1/runs`
+  logger.info('hermes request', { label: 'hermes', method: 'POST', url, body: forwardedBody })
+
   try {
-    const response = await fetch(`${config.hermesApiBase}/v1/runs`, {
+    const response = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(forwardedBody),
@@ -106,11 +47,15 @@ export default defineEventHandler(async (event) => {
 
     const data = await response.json()
     if (!response.ok) {
+      logger.error('hermes response error', { label: 'hermes', method: 'POST', url, status: response.status, body: data })
       setResponseStatus(event, response.status)
+    } else {
+      logger.info('hermes response ok', { label: 'hermes', method: 'POST', url, status: response.status })
     }
     setResponseHeaders(event, resHeaders)
     return data
   } catch (err: any) {
+    logger.error('hermes request failed', { label: 'hermes', method: 'POST', url, message: err.message })
     setResponseStatus(event, 502)
     return {
       error: { message: `Hermes API Server unreachable: ${err.message}`, type: 'server_error' },

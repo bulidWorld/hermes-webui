@@ -4,6 +4,7 @@ import type {
   RunState,
   ApprovalRequestEvent,
   MessageEntry,
+  HermesSession,
 } from '~/types/hermes'
 import { makeId } from '~/types/hermes'
 import { applySSEEvent } from '~/utils/timeline-builder'
@@ -17,32 +18,51 @@ export function useHermesChat() {
   const inputText = ref('')
   const usage = ref<{ input_tokens: number; output_tokens: number; total_tokens: number } | null>(null)
 
-  const { userId, sessionId, updateSession, fetchMe } = useAuth()
+  const { userId, sessionId, updateSession } = useAuth()
   const { connect: sseConnect, disconnect: sseDisconnect, isConnected } = useSSE()
   const containerRef = ref<HTMLElement | null>(null)
   const { stickToBottom, onScroll, scrollToBottom, reset: resetScroll } = useAutoScroll(containerRef)
+
+  const sessions = ref<HermesSession[]>([])
+  const sessionsLoading = ref(false)
 
   const isRunning = computed(() => runState.value === 'running' || runState.value === 'waiting_approval')
   const canSend = computed(() => runState.value === 'idle' && inputText.value.trim().length > 0)
 
   watch(() => timeline.value.length, () => { nextTick(() => scrollToBottom()) })
 
-  // ── Load auth + history on mount ──
+  // ── Load auth + sessions on mount ──
   onMounted(async () => {
-    await fetchMe()
-    if (userId.value) {
-      await loadHistory()
+    await loadSessions()
+    if (sessionId.value) {
+      await loadSessionMessages(sessionId.value)
     }
   })
 
-  async function loadHistory() {
+  async function loadSessions() {
+    sessionsLoading.value = true
     try {
-      const res = await $fetch<{ messages: Array<{ role: string; content: string }>; sessionId: string | null }>(
-        '/api/hermes/sessions/current'
+      const res = await $fetch<{ data: HermesSession[]; userId: string | null; sessionId: string | null }>('/api/hermes/sessions')
+      sessions.value = res.data || []
+      if (res.userId) userId.value = res.userId
+      if (!sessionId.value && res.sessionId) {
+        sessionId.value = res.sessionId
+      }
+    } catch (err: any) {
+      console.error('Failed to load sessions:', err.message)
+    } finally {
+      sessionsLoading.value = false
+    }
+  }
+
+  async function loadSessionMessages(sid: string) {
+    try {
+      const res = await $fetch<{ data: Array<{ role: string; content: string }> }>(
+        `/api/hermes/sessions/${sid}/messages`
       )
-      if (res.messages && res.messages.length > 0) {
+      if (res.data && res.data.length > 0) {
         const entries: TimelineEntry[] = []
-        for (const msg of res.messages) {
+        for (const msg of res.data) {
           if (msg.role === 'user') {
             entries.push({
               id: makeId(), kind: 'message', role: 'user',
@@ -61,8 +81,31 @@ export function useHermesChat() {
         nextTick(() => scrollToBottom(true))
       }
     } catch (err: any) {
-      console.error('Failed to load history:', err.message)
+      console.error('Failed to load session messages:', err.message)
     }
+  }
+
+  async function switchSession(sid: string) {
+    sseDisconnect()
+    runState.value = 'idle'
+    pendingApproval.value = null
+    error.value = null
+    await updateSession(sid)
+    timeline.value = []
+    resetScroll()
+    await loadSessionMessages(sid)
+  }
+
+  async function newChat() {
+    sseDisconnect()
+    timeline.value = []
+    runState.value = 'idle'
+    currentRunId.value = null
+    pendingApproval.value = null
+    error.value = null
+    usage.value = null
+    resetScroll()
+    await updateSession('')
   }
 
   // ── SSE event handler ──
@@ -79,9 +122,9 @@ export function useHermesChat() {
       runState.value = 'idle'
       usage.value = 'usage' in event ? (event as any).usage : null
       pendingApproval.value = null
-      // Update server session mapping (compression may have rotated session_id)
       const sid = (event as any).session_id
       if (sid) updateSession(sid)
+      loadSessions()
     } else if (event.event === 'run.failed') {
       runState.value = 'idle'
       error.value = 'error' in event ? (event as any).error : null
@@ -114,6 +157,7 @@ export function useHermesChat() {
 
     try {
       const body: any = { input: msg }
+      if (sessionId.value) body.session_id = sessionId.value
       const response = await $fetch<{ run_id: string }>('/api/hermes/runs', {
         method: 'POST', body,
       })
@@ -175,7 +219,8 @@ export function useHermesChat() {
     timeline, runState, currentRunId, pendingApproval, error,
     inputText, usage, isRunning, canSend, isConnected,
     userId, sessionId,
+    sessions, sessionsLoading,
     containerRef, stickToBottom,
-    sendMessage, stopRun, resolveApproval, clearChat, onScroll,
+    sendMessage, stopRun, resolveApproval, clearChat, newChat, switchSession, onScroll,
   }
 }

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { TimelineEntry } from '~/types/hermes'
 
-defineProps<{
-  entries: TimelineEntry[]
+const props = withDefaults(defineProps<{
+  entries?: TimelineEntry[]
   error: string | null
-}>()
+}>(), {
+  entries: () => [],
+})
 
 const emit = defineEmits<{
   scroll: [ev: Event]

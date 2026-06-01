@@ -5,7 +5,7 @@ const props = defineProps<{
   entry: ThinkingEntry
 }>()
 
-const isOpen = ref(!props.entry.collapsed)
+const isOpen = ref(false)
 </script>
 
 <template>

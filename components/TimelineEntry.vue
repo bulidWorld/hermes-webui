@@ -16,9 +16,15 @@ defineProps<{
         ⏳ Waiting for approval...
       </div>
     </div>
-    <div v-else-if="entry.kind === 'approval' && entry.status === 'resolved'" class="flex justify-center my-2">
+    <div v-else-if="entry.kind === 'approval' && entry.status === 'resolved' && entry.choice !== 'deny'" class="flex justify-center my-2">
       <div class="bg-gray-800/50 border border-gray-700/50 rounded-xl px-4 py-2 text-xs text-gray-500">
-        {{ entry.choice === 'deny' ? '✗ Command denied' : `✓ Approved (${entry.choice})` }}
+        ✓ Approved ({{ entry.choice }})
+      </div>
+    </div>
+    <div v-else-if="entry.kind === 'approval' && entry.status === 'resolved' && entry.choice === 'deny'" class="flex justify-center my-2">
+      <div class="bg-red-900/50 border border-red-600/50 rounded-xl px-4 py-2 text-xs text-red-300 font-medium">
+        ✗ Command denied
+      </div>
       </div>
     </div>
     <div v-else-if="entry.kind === 'system'" class="flex justify-center my-3">

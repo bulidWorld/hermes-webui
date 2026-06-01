@@ -1,4 +1,4 @@
-import { validateUser, setAuthCookie, getSessionId } from '~/server/utils/user-store'
+import { validateUser, setAuthCookie } from '~/server/utils/user-store'
 import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
@@ -22,5 +22,5 @@ export default defineEventHandler(async (event) => {
   setAuthCookie(event, token)
   logger.info('login cookie set', { label: 'auth', userId })
 
-  return { userId, sessionId: getSessionId(userId) }
+  return { userId }
 })

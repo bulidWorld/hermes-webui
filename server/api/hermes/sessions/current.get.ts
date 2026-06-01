@@ -1,4 +1,4 @@
-import { getUserIdFromCookie, getSessionId } from '~/server/utils/user-store'
+import { getUserIdFromCookie } from '~/server/utils/user-store'
 import { DatabaseSync } from 'node:sqlite'
 import { resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -46,7 +46,8 @@ export default defineEventHandler(async (event) => {
     return { error: 'Not authenticated' }
   }
 
-  const sessionId = getSessionId(userId)
+  const query = getQuery(event)
+  const sessionId = String(query.sessionId || '')
   if (!sessionId) {
     return { messages: [], sessionId: null }
   }

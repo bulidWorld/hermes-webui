@@ -1,4 +1,4 @@
-import { getUserIdFromCookie, saveSessionId } from '~/server/utils/user-store'
+import { getUserIdFromCookie } from '~/server/utils/user-store'
 import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
@@ -9,12 +9,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const sessionId = body.sessionId
-  if (sessionId) {
-    saveSessionId(userId, sessionId)
-  } else {
-    logger.debug('session post without sessionId', { label: 'session', userId })
-  }
+  logger.debug('session update', { label: 'session', userId, sessionId: body.sessionId })
 
   return { ok: true }
 })
