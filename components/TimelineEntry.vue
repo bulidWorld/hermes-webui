@@ -10,6 +10,7 @@ defineProps<{
   <div>
     <MessageBubble v-if="entry.kind === 'message'" :entry="(entry as any)" />
     <ToolCard v-else-if="entry.kind === 'tool'" :entry="(entry as any)" />
+    <ToolResultCard v-else-if="entry.kind === 'tool_result'" :entry="(entry as any)" />
     <ThinkingBlock v-else-if="entry.kind === 'thinking'" :entry="(entry as any)" />
     <div v-else-if="entry.kind === 'approval' && entry.status === 'pending'" class="flex justify-center my-2">
       <div class="bg-amber-900/30 border border-amber-700/50 rounded-xl px-4 py-2 text-xs text-amber-400">

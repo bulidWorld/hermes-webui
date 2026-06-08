@@ -1,9 +1,18 @@
 <script setup lang="ts">
-import type { MessageEntry } from '~/types/hermes'
+import type { MessageEntry, FileInfo } from '~/types/hermes'
 
 defineProps<{
   entry: MessageEntry
 }>()
+
+function downloadFile(file: FileInfo) {
+  const a = document.createElement('a')
+  a.href = `/api/hermes/files/${file.file_id}`
+  a.download = file.filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
 </script>
 
 <template>
@@ -29,6 +38,20 @@ defineProps<{
       <template v-else>
         <p class="whitespace-pre-wrap">{{ entry.content }}</p>
       </template>
+
+      <!-- File attachments in user messages -->
+      <div
+        v-if="entry.role === 'user' && entry.attachments && entry.attachments.length > 0"
+        class="flex flex-wrap gap-1 mt-2 pt-2 border-t border-white/20"
+      >
+        <FileAttachment
+          v-for="file in entry.attachments"
+          :key="file.file_id"
+          :file="file"
+          :removable="false"
+          @download="downloadFile"
+        />
+      </div>
     </div>
   </div>
 </template>

@@ -13,7 +13,17 @@ const props = defineProps<{
 
 const html = computed(() => {
   try {
-    return marked.parse(props.content) as string
+    // Pre-process fenced JSON code blocks: pretty-print with 2-space indent
+    let content = props.content
+    content = content.replace(/```json\s*\n([\s\S]*?)```/g, (_match: string, code: string) => {
+      try {
+        const formatted = JSON.stringify(JSON.parse(code), null, 2)
+        return '```json\n' + formatted + '\n```'
+      } catch {
+        return _match // keep original if not valid JSON
+      }
+    })
+    return marked.parse(content) as string
   } catch {
     return props.content
   }

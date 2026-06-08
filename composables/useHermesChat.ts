@@ -5,6 +5,7 @@ import type {
   ApprovalRequestEvent,
   MessageEntry,
   HermesSession,
+  ToolResultEntry,
 } from '~/types/hermes'
 import { makeId } from '~/types/hermes'
 import { applySSEEvent } from '~/utils/timeline-builder'
@@ -20,6 +21,7 @@ export function useHermesChat() {
 
   const { userId, sessionId, updateSession } = useAuth()
   const { connect: sseConnect, disconnect: sseDisconnect, isConnected } = useSSE()
+  const fileUpload = useFileUpload()
   const containerRef = ref<HTMLElement | null>(null)
   const { stickToBottom, onScroll, scrollToBottom, reset: resetScroll } = useAutoScroll(containerRef)
 
@@ -57,11 +59,24 @@ export function useHermesChat() {
 
   async function loadSessionMessages(sid: string) {
     try {
-      const res = await $fetch<{ data: Array<{ role: string; content: string }> }>(
-        `/api/hermes/sessions/${sid}/messages`
-      )
+      const res = await $fetch<{
+        data: Array<{
+          role: string
+          content: string | any
+          tool_calls?: Array<{
+            id?: string
+            call_id?: string
+            type: string
+            function: { name: string; arguments: string }
+          }>
+          tool_call_id?: string
+          tool_name?: string
+        }>
+      }>(`/api/hermes/sessions/${sid}/messages`)
       if (res.data && res.data.length > 0) {
         const entries: TimelineEntry[] = []
+        const pendingToolCalls = new Map<string, ToolResultEntry>()
+
         for (const msg of res.data) {
           if (msg.role === 'user') {
             entries.push({
@@ -70,11 +85,50 @@ export function useHermesChat() {
               isStreaming: false, timestamp: 0,
             })
           } else if (msg.role === 'assistant') {
-            entries.push({
-              id: makeId(), kind: 'message', role: 'assistant',
-              content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
-              isStreaming: false, timestamp: 0,
-            })
+            // Create pending ToolResultEntry items for each tool call
+            if (msg.tool_calls && msg.tool_calls.length > 0) {
+              for (const tc of msg.tool_calls) {
+                const callId = tc.id || tc.call_id || ''
+                const entry: ToolResultEntry = {
+                  id: makeId(),
+                  kind: 'tool_result',
+                  toolName: tc.function?.name || tc.type || 'unknown',
+                  arguments: tc.function?.arguments || '',
+                  result: null,
+                  collapsed: true,
+                  timestamp: 0,
+                }
+                if (callId) pendingToolCalls.set(callId, entry)
+                entries.push(entry)
+              }
+            }
+            // Also push the assistant text message if there's content
+            if (msg.content) {
+              entries.push({
+                id: makeId(), kind: 'message', role: 'assistant',
+                content: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+                isStreaming: false, timestamp: 0,
+              })
+            }
+          } else if (msg.role === 'tool') {
+            // Match tool result to the pending tool call entry
+            const callId = msg.tool_call_id
+            if (callId && pendingToolCalls.has(callId)) {
+              const entry = pendingToolCalls.get(callId)!
+              entry.result = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+              pendingToolCalls.delete(callId)
+            } else {
+              // Orphan tool result — create a standalone entry
+              entries.push({
+                id: makeId(),
+                kind: 'tool_result',
+                toolName: msg.tool_name || 'unknown',
+                arguments: '',
+                result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+                collapsed: true,
+                timestamp: 0,
+              })
+            }
           }
         }
         timeline.value = entries
@@ -148,6 +202,9 @@ export function useHermesChat() {
     const userMsg: MessageEntry = {
       id: makeId(), kind: 'message', role: 'user',
       content: msg, isStreaming: false, timestamp: Date.now() / 1000,
+      attachments: fileUpload.attachedFiles.value.length > 0
+        ? [...fileUpload.attachedFiles.value]
+        : undefined,
     }
     timeline.value = [...timeline.value, userMsg]
     resetScroll()
@@ -158,11 +215,16 @@ export function useHermesChat() {
     try {
       const body: any = { input: msg }
       if (sessionId.value) body.session_id = sessionId.value
+      const attachmentsPayload = fileUpload.getAttachmentsPayload()
+      if (attachmentsPayload.length > 0) {
+        body.attachments = attachmentsPayload
+      }
       const response = await $fetch<{ run_id: string }>('/api/hermes/runs', {
         method: 'POST', body,
       })
 
       currentRunId.value = response.run_id
+      fileUpload.clearFiles()
 
       sseConnect(
         response.run_id,
@@ -222,5 +284,6 @@ export function useHermesChat() {
     sessions, sessionsLoading,
     containerRef, stickToBottom,
     sendMessage, stopRun, resolveApproval, clearChat, newChat, switchSession, onScroll,
+    ...fileUpload,
   }
 }

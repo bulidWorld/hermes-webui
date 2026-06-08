@@ -25,25 +25,28 @@ const choices = [
         v-if="event"
         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       >
-        <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl max-w-lg w-full p-6">
-          <h2 class="text-lg font-semibold text-red-400 mb-4">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl max-w-lg w-full max-h-[85vh] flex flex-col p-6">
+          <h2 class="text-lg font-semibold text-red-400 mb-4 shrink-0">
             ⚠️ Dangerous Command Requires Approval
           </h2>
 
-          <!-- Command -->
-          <div class="mb-3">
-            <label class="block text-xs font-medium text-gray-500 mb-1">Command</label>
-            <pre class="bg-gray-950 border border-gray-700 rounded-lg p-3 text-sm text-red-300 overflow-x-auto font-mono">{{ event.command }}</pre>
+          <!-- Scrollable content area -->
+          <div class="overflow-y-auto flex-1 min-h-0 mb-4 space-y-3">
+            <!-- Command -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Command</label>
+              <pre class="bg-gray-950 border border-gray-700 rounded-lg p-3 text-sm text-red-300 overflow-x-auto font-mono whitespace-pre-wrap break-all">{{ event.command }}</pre>
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Reason</label>
+              <p class="text-sm text-gray-400">{{ event.description }}</p>
+            </div>
           </div>
 
-          <!-- Description -->
-          <div class="mb-4">
-            <label class="block text-xs font-medium text-gray-500 mb-1">Reason</label>
-            <p class="text-sm text-gray-400">{{ event.description }}</p>
-          </div>
-
-          <!-- Choice buttons -->
-          <div class="grid grid-cols-2 gap-2">
+          <!-- Choice buttons (fixed at bottom) -->
+          <div class="grid grid-cols-2 gap-2 shrink-0">
             <button
               v-for="choice in choices"
               :key="choice.value"

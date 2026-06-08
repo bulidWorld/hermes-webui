@@ -6,6 +6,7 @@ const {
   sessions, sessionsLoading,
   containerRef,
   sendMessage, stopRun, resolveApproval, clearChat, newChat, switchSession, onScroll,
+  attachedFiles, isUploading, uploadErrors, uploadFiles, removeFile,
 } = useHermesChat()
 
 const { logout } = useAuth()
@@ -15,6 +16,10 @@ const connectionState = computed(() => {
   if (runState.value === 'running') return 'connecting' as const
   return 'disconnected' as const
 })
+
+async function handleAttachFiles(files: File[]) {
+  await uploadFiles(files)
+}
 </script>
 
 <template>
@@ -44,13 +49,19 @@ const connectionState = computed(() => {
         :entries="timeline"
         :error="error"
         @scroll="onScroll"
+        @attach-files="handleAttachFiles"
       />
 
       <ChatInput
         v-model="inputText"
         :can-send="canSend"
         :is-running="isRunning"
+        :attached-files="attachedFiles"
+        :is-uploading="isUploading"
+        :upload-errors="uploadErrors"
         @send="sendMessage"
+        @attach-files="handleAttachFiles"
+        @remove-file="removeFile"
       />
 
       <ApprovalModal

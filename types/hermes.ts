@@ -92,7 +92,7 @@ export type SSEEvent =
 
 // ── Timeline entry types (for rendering) ──
 
-export type TimelineEntryKind = 'message' | 'tool' | 'thinking' | 'approval' | 'system'
+export type TimelineEntryKind = 'message' | 'tool' | 'tool_result' | 'thinking' | 'approval' | 'system'
 
 export interface TimelineEntryBase {
   id: string
@@ -105,6 +105,7 @@ export interface MessageEntry extends TimelineEntryBase {
   role: 'user' | 'assistant'
   content: string
   isStreaming: boolean
+  attachments?: FileInfo[]
 }
 
 export interface ToolEntry extends TimelineEntryBase {
@@ -113,6 +114,15 @@ export interface ToolEntry extends TimelineEntryBase {
   preview: string
   status: 'running' | 'completed' | 'error'
   duration?: number
+}
+
+/** Historical tool call + result loaded from session messages. */
+export interface ToolResultEntry extends TimelineEntryBase {
+  kind: 'tool_result'
+  toolName: string
+  arguments: string
+  result: string | null
+  collapsed: boolean
 }
 
 export interface ThinkingEntry extends TimelineEntryBase {
@@ -141,6 +151,7 @@ export interface SystemEntry extends TimelineEntryBase {
 export type TimelineEntry =
   | MessageEntry
   | ToolEntry
+  | ToolResultEntry
   | ThinkingEntry
   | ApprovalEntry
   | SystemEntry
@@ -164,6 +175,39 @@ export interface HermesSession {
 export interface HermesSessionListResponse {
   sessions: HermesSession[]
   total: number
+}
+
+// ── File types ──
+
+export interface FileInfo {
+  file_id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  remote_url?: string
+  created_at: number
+  expires_at: number
+}
+
+export interface FileUploadResponse {
+  object: 'list'
+  data: FileInfo[]
+  warnings?: string[]
+}
+
+export interface FileListResponse {
+  object: 'list'
+  data: FileInfo[]
+}
+
+export interface FileDeleteResponse {
+  id: string
+  object: 'file'
+  deleted: boolean
+}
+
+export interface AttachmentRef {
+  file_id: string
 }
 
 // ── Helper ──
