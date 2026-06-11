@@ -68,6 +68,8 @@ export interface RunCompletedEvent extends BaseSSEEvent {
     output_tokens: number
     total_tokens: number
   }
+  session_id?: string
+  artifacts?: ArtifactInfo[]
 }
 
 export interface RunFailedEvent extends BaseSSEEvent {
@@ -105,7 +107,9 @@ export interface MessageEntry extends TimelineEntryBase {
   role: 'user' | 'assistant'
   content: string
   isStreaming: boolean
+  collapsed?: boolean
   attachments?: FileInfo[]
+  artifacts?: ArtifactInfo[]
 }
 
 export interface ToolEntry extends TimelineEntryBase {
@@ -122,6 +126,7 @@ export interface ToolResultEntry extends TimelineEntryBase {
   toolName: string
   arguments: string
   result: string | null
+  artifacts?: ArtifactInfo[]
   collapsed: boolean
 }
 
@@ -145,6 +150,7 @@ export interface SystemEntry extends TimelineEntryBase {
   event: 'run.completed' | 'run.failed' | 'run.cancelled'
   output?: string
   usage?: { input_tokens: number; output_tokens: number; total_tokens: number }
+  artifacts?: ArtifactInfo[]
   error?: string
 }
 
@@ -181,12 +187,34 @@ export interface HermesSessionListResponse {
 
 export interface FileInfo {
   file_id: string
+  public_id?: string
   filename: string
   mime_type: string
   size_bytes: number
   remote_url?: string
+  download_url?: string
   created_at: number
   expires_at: number
+}
+
+export interface ArtifactInfo {
+  id?: string
+  artifact_id?: string
+  public_id?: string
+  run_id?: string
+  session_id?: string
+  tool_call_id?: string
+  tool_name?: string
+  file_id?: string
+  filename: string
+  mime_type?: string
+  size?: number
+  size_bytes?: number
+  remote_path?: string
+  remote_url?: string
+  download_url?: string
+  url?: string
+  created_at?: number
 }
 
 export interface FileUploadResponse {

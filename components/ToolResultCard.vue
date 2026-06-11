@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ToolResultEntry } from '~/types/hermes'
+import { downloadFile } from '~/utils/file-download'
 
 const props = defineProps<{
   entry: ToolResultEntry
@@ -30,6 +31,7 @@ const prettyResult = computed(() => {
 
 const hasResult = computed(() => props.entry.result !== null && props.entry.result !== '')
 const hasArgs = computed(() => props.entry.arguments && props.entry.arguments.trim() !== '')
+const hasArtifacts = computed(() => props.entry.artifacts && props.entry.artifacts.length > 0)
 </script>
 
 <template>
@@ -70,11 +72,29 @@ const hasArgs = computed(() => props.entry.arguments && props.entry.arguments.tr
           with args
         </span>
 
+        <span v-if="!isExpanded && hasArtifacts" class="text-emerald-300 text-xs shrink-0">
+          {{ entry.artifacts?.length }} file{{ entry.artifacts?.length === 1 ? '' : 's' }}
+        </span>
+
         <!-- Expand/collapse chevron -->
         <span class="text-gray-500 text-xs ml-auto shrink-0 transition-transform duration-200" :class="isExpanded ? 'rotate-180' : ''">
           ▼
         </span>
       </button>
+
+      <div
+        v-if="hasArtifacts"
+        class="flex flex-wrap gap-1 px-3 pb-2"
+        :class="isExpanded ? 'pt-1' : ''"
+      >
+        <FileAttachment
+          v-for="artifact in entry.artifacts"
+          :key="artifact.file_id || artifact.artifact_id || artifact.id"
+          :file="artifact"
+          :removable="false"
+          @download="downloadFile"
+        />
+      </div>
 
       <!-- Expanded detail -->
       <div

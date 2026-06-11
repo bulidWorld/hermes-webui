@@ -126,15 +126,17 @@ function handleRunCompleted(timeline: TimelineEntry[], event: any): TimelineEntr
     if (e.kind === 'thinking') return { ...e, collapsed: true } as TimelineEntry
     return e
   })
+  const withArtifacts = attachArtifactsToAssistantMessage(collapsed, event.artifacts, event.output, event.timestamp)
   const entry = {
     id: makeId(),
     kind: 'system' as const,
     event: 'run.completed' as const,
     output: event.output,
     usage: event.usage,
+    artifacts: event.artifacts,
     timestamp: event.timestamp,
   }
-  return [...collapsed, entry]
+  return [...withArtifacts, entry]
 }
 
 function handleRunFailed(timeline: TimelineEntry[], event: any): TimelineEntry[] {
@@ -177,4 +179,40 @@ function findLastRunningTool(timeline: TimelineEntry[], toolName: string): numbe
     }
   }
   return -1
+}
+
+function attachArtifactsToAssistantMessage(
+  timeline: TimelineEntry[],
+  artifacts: any[] | undefined,
+  output: string | undefined,
+  timestamp: number,
+): TimelineEntry[] {
+  if (!Array.isArray(artifacts) || artifacts.length === 0) return timeline
+
+  for (let i = timeline.length - 1; i >= 0; i--) {
+    const entry = timeline[i]
+    if (entry.kind === 'message' && (entry as MessageEntry).role === 'user') {
+      break
+    }
+    if (entry.kind === 'message' && (entry as MessageEntry).role === 'assistant') {
+      const message = entry as MessageEntry
+      const result = [...timeline]
+      result[i] = {
+        ...message,
+        artifacts: [...(message.artifacts || []), ...artifacts],
+      }
+      return result
+    }
+  }
+
+  const fallbackMessage: MessageEntry = {
+    id: makeId(),
+    kind: 'message',
+    role: 'assistant',
+    content: output || '',
+    isStreaming: false,
+    artifacts,
+    timestamp,
+  }
+  return [...timeline, fallbackMessage]
 }

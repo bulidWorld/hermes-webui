@@ -4,11 +4,13 @@ export default defineNuxtConfig({
   modules: ['@nuxtjs/tailwindcss'],
   css: ['~/assets/main.css'],
   runtimeConfig: {
-    hermesApiBase: 'http://127.0.0.1:8642',
+    hermesApiBase: '',
     hermesApiKey: '',
     authApiUrl: '',
     authApiKey: '',
     authCenterUrl: '',
+    fileStorageServiceUrl: '',
+    appJwtSecret: '',
   },
   devServer: {
     host: '0.0.0.0',

@@ -21,10 +21,12 @@ export async function validateUser(username: string, password: string): Promise<
   } catch (err: any) {
     logger.error('login API call failed', {
       label: 'auth',
+      url,
+      username,
       statusCode: err.statusCode,
       statusMessage: err.statusMessage,
       message: err.message,
-      body: err.data ? JSON.stringify(err.data) : undefined,
+      resBody: err.data ? JSON.stringify(err.data).slice(0, 2000) : undefined,
     })
     return null
   }
@@ -58,12 +60,12 @@ export async function validateToken(token: string): Promise<string | null> {
     logger.error('token verify call failed', {
       label: 'auth',
       url,
-      token: token,
+      tokenPreview: token ? `${token.slice(0, 12)}...${token.slice(-4)}` : '(none)',
       apiKeyPresent: !!apiKey,
       statusCode: err.statusCode,
       statusMessage: err.statusMessage,
       message: err.message,
-      body: err.data ? JSON.stringify(err.data) : undefined,
+      resBody: err.data ? JSON.stringify(err.data).slice(0, 2000) : undefined,
     })
     return null
   }

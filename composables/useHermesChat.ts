@@ -6,6 +6,7 @@ import type {
   MessageEntry,
   HermesSession,
   ToolResultEntry,
+  ArtifactInfo,
 } from '~/types/hermes'
 import { makeId } from '~/types/hermes'
 import { applySSEEvent } from '~/utils/timeline-builder'
@@ -23,7 +24,15 @@ export function useHermesChat() {
   const { connect: sseConnect, disconnect: sseDisconnect, isConnected } = useSSE()
   const fileUpload = useFileUpload()
   const containerRef = ref<HTMLElement | null>(null)
-  const { stickToBottom, onScroll, scrollToBottom, reset: resetScroll } = useAutoScroll(containerRef)
+  // Bridge: Timeline component exposes { scrollEl }, extract the real DOM element
+  const scrollContainerRef = computed({
+    get: () => {
+      const comp = containerRef.value as any
+      return comp?.scrollEl ?? null
+    },
+    set: () => {},
+  })
+  const { stickToBottom, onScroll, scrollToBottom, reset: resetScroll } = useAutoScroll(scrollContainerRef)
 
   const sessions = ref<HermesSession[]>([])
   const sessionsLoading = ref(false)
@@ -71,6 +80,7 @@ export function useHermesChat() {
           }>
           tool_call_id?: string
           tool_name?: string
+          artifacts?: ArtifactInfo[]
         }>
       }>(`/api/hermes/sessions/${sid}/messages`)
       if (res.data && res.data.length > 0) {
@@ -116,6 +126,7 @@ export function useHermesChat() {
             if (callId && pendingToolCalls.has(callId)) {
               const entry = pendingToolCalls.get(callId)!
               entry.result = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+              entry.artifacts = msg.artifacts
               pendingToolCalls.delete(callId)
             } else {
               // Orphan tool result — create a standalone entry
@@ -125,14 +136,39 @@ export function useHermesChat() {
                 toolName: msg.tool_name || 'unknown',
                 arguments: '',
                 result: typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
+                artifacts: msg.artifacts,
                 collapsed: true,
                 timestamp: 0,
               })
             }
           }
         }
+
+        // Collapse old messages: keep only the last 4 user + 4 assistant messages expanded
+        const KEEP_EXPANDED = 4
+        let userCount = 0
+        let assistantCount = 0
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const entry = entries[i]
+          if (entry.kind === 'message') {
+            const msg = entry as MessageEntry
+            if (msg.role === 'user') {
+              userCount++
+              msg.collapsed = userCount > KEEP_EXPANDED
+            } else if (msg.role === 'assistant') {
+              assistantCount++
+              msg.collapsed = assistantCount > KEEP_EXPANDED
+            }
+          }
+        }
+
         timeline.value = entries
-        nextTick(() => scrollToBottom(true))
+        // Scroll to bottom after DOM renders all history entries
+        nextTick(() => {
+          requestAnimationFrame(() => {
+            scrollToBottom(true)
+          })
+        })
       }
     } catch (err: any) {
       console.error('Failed to load session messages:', err.message)

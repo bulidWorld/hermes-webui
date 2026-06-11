@@ -13,7 +13,9 @@ const emit = defineEmits<{
   'attach-files': [files: File[]]
 }>()
 
-defineExpose({})
+const scrollEl = ref<HTMLElement | null>(null)
+
+defineExpose({ scrollEl })
 
 const isDragOver = ref(false)
 let dragCounter = 0
@@ -49,6 +51,7 @@ function onDrop(e: DragEvent) {
 
 <template>
   <div
+    ref="scrollEl"
     class="flex-1 overflow-y-auto px-4 py-4 space-y-0.5 relative"
     @scroll="(e: Event) => $emit('scroll', e)"
     @dragover="onDragOver"

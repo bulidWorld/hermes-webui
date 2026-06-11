@@ -1,4 +1,6 @@
 import { useHermesClient } from '~/server/utils/hermes-client'
+import { logger } from '~/server/utils/logger'
+import { buildAttachmentDisposition, getDownloadFilenameFromQuery } from '~/server/utils/download-disposition'
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
@@ -12,6 +14,7 @@ export default defineEventHandler(async (event) => {
   const result = await hermes.getFile(id)
 
   if (!result.ok || !result.response) {
+    logger.warn('file download: upstream error', { label: 'download', fileId: id, status: result.status, data: result.data })
     setResponseStatus(event, result.status)
     return result.data
   }
@@ -22,6 +25,8 @@ export default defineEventHandler(async (event) => {
   if (contentType) resHeaders['Content-Type'] = contentType
   const disposition = result.response.headers.get('Content-Disposition')
   if (disposition) resHeaders['Content-Disposition'] = disposition
+  const filename = getDownloadFilenameFromQuery(event)
+  if (filename) resHeaders['Content-Disposition'] = buildAttachmentDisposition(filename)
   const fileId = result.response.headers.get('X-File-Id')
   if (fileId) resHeaders['X-File-Id'] = fileId
 

@@ -2,6 +2,7 @@ import { getUserIdFromCookie } from '~/server/utils/user-store'
 import { DatabaseSync } from 'node:sqlite'
 import { resolve } from 'node:path'
 import { homedir } from 'node:os'
+import { logger } from '~/server/utils/logger'
 
 const STATE_DB = resolve(homedir(), '.hermes', 'state.db')
 
@@ -95,7 +96,7 @@ export default defineEventHandler(async (event) => {
 
     return { messages, sessionId }
   } catch (err: any) {
-    console.error('Failed to load session history:', err.message)
+    logger.error('session history: db query failed', { label: 'session', sessionId, error: err.message })
     return { messages: [], sessionId }
   }
 })

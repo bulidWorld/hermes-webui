@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { FileInfo } from '~/types/hermes'
+import type { ArtifactInfo, FileInfo } from '~/types/hermes'
+import { canDownloadFile, downloadFile, getDownloadFileId, getDownloadFileName, getDownloadFileSize } from '~/utils/file-download'
 
 const props = defineProps<{
-  file: FileInfo
+  file: FileInfo | ArtifactInfo
   error?: string | null
   uploading?: boolean
   removable?: boolean
@@ -10,7 +11,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   remove: [fileId: string]
-  download: [file: FileInfo]
+  download: [file: FileInfo | ArtifactInfo]
 }>()
 
 function getFileIcon(mimeType: string): string {
@@ -28,11 +29,17 @@ function getFileIcon(mimeType: string): string {
 }
 
 function formatFileSize(bytes: number): string {
+  if (!bytes) return ''
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
+
+const fileId = computed(() => getDownloadFileId(props.file))
+const filename = computed(() => getDownloadFileName(props.file))
+const fileSize = computed(() => getDownloadFileSize(props.file))
+const canDownload = computed(() => canDownloadFile(props.file) && !props.uploading && !props.error)
 </script>
 
 <template>
@@ -42,9 +49,10 @@ function formatFileSize(bytes: number): string {
       error
         ? 'bg-red-900/30 border border-red-700/50 text-red-400'
         : 'bg-gray-700/60 border border-gray-600/50 text-gray-300',
-      props.file.mime_type?.startsWith('image/') && !error ? 'cursor-pointer hover:bg-gray-600/80' : '',
+      canDownload ? 'cursor-pointer hover:bg-gray-600/80' : '',
     ]"
-    @click="props.file.mime_type?.startsWith('image/') && !error ? emit('download', props.file) : undefined"
+    :title="canDownload ? `Download ${filename}` : filename"
+    @click="canDownload ? downloadFile(props.file) : undefined"
   >
     <!-- Upload spinner -->
     <span v-if="uploading" class="flex-shrink-0 w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -55,12 +63,12 @@ function formatFileSize(bytes: number): string {
     <!-- File info -->
     <span class="flex-1 truncate max-w-[180px]">
       <template v-if="error">
-        <span class="text-red-400">{{ props.file.filename || 'Unknown' }}</span>
+        <span class="text-red-400">{{ filename }}</span>
         <span class="text-red-500/70 ml-1">— {{ error }}</span>
       </template>
       <template v-else>
-        {{ props.file.filename || 'Unknown' }}
-        <span class="text-gray-500 ml-1">{{ formatFileSize(props.file.size_bytes || 0) }}</span>
+        {{ filename }}
+        <span v-if="fileSize" class="text-gray-500 ml-1">{{ formatFileSize(fileSize) }}</span>
       </template>
     </span>
 
@@ -68,7 +76,7 @@ function formatFileSize(bytes: number): string {
     <button
       v-if="removable !== false"
       class="flex-shrink-0 ml-0.5 text-gray-500 hover:text-gray-300 hover:bg-gray-600 rounded-full w-4 h-4 inline-flex items-center justify-center transition-colors"
-      @click.stop="emit('remove', props.file.file_id)"
+      @click.stop="emit('remove', fileId)"
     >
       ✕
     </button>

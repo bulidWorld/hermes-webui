@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TimelineEntry } from '~/types/hermes'
+import { downloadFile } from '~/utils/file-download'
 
 defineProps<{
   entry: TimelineEntry
@@ -30,7 +31,10 @@ defineProps<{
     <div v-else-if="entry.kind === 'system'" class="flex justify-center my-3">
       <div
         :class="[
-          'rounded-full px-4 py-1 text-xs font-medium',
+          entry.event === 'run.completed' && entry.artifacts?.length
+            ? 'rounded-xl px-3 py-2'
+            : 'rounded-full px-4 py-1',
+          'text-xs font-medium',
           entry.event === 'run.completed'
             ? 'bg-green-900/40 text-green-400'
             : entry.event === 'run.failed'
@@ -43,6 +47,18 @@ defineProps<{
           <span v-if="entry.usage" class="ml-2 text-gray-500">
             {{ entry.usage.total_tokens?.toLocaleString() }} tokens
           </span>
+          <div
+            v-if="entry.artifacts && entry.artifacts.length > 0"
+            class="flex flex-wrap justify-center gap-1 mt-2 pt-2 border-t border-green-700/30"
+          >
+            <FileAttachment
+              v-for="artifact in entry.artifacts"
+              :key="artifact.file_id || artifact.artifact_id || artifact.id"
+              :file="artifact"
+              :removable="false"
+              @download="downloadFile"
+            />
+          </div>
         </template>
         <template v-else-if="entry.event === 'run.failed'">
           ✗ Failed{{ entry.error ? `: ${entry.error}` : '' }}

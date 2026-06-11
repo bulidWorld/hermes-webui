@@ -1,5 +1,62 @@
 import { logger } from '~/server/utils/logger'
 
+// ── Logging helpers ──
+
+/** Redact sensitive header values for safe logging. */
+function sanitizeHeaders(headers: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(headers)) {
+    if (/^(authorization|x-api-key|x-app-jwt)$/i.test(k)) {
+      out[k] = v ? `${v.slice(0, 12)}...${v.slice(-4)}` : '(empty)'
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+/** Stringify request body for logging; FormData / binary are summarised. */
+function sanitizeReqBody(body: unknown): string {
+  if (body === undefined || body === null) return '(none)'
+  if (typeof body === 'string') return body.slice(0, 4000)
+  if (body instanceof FormData) {
+    const entries: string[] = []
+    body.forEach((v, k) => { entries.push(`${k}=${typeof v === 'string' ? v.slice(0, 200) : '[blob]'}`) })
+    return `[FormData ${entries.join(', ')}]`
+  }
+  return JSON.stringify(body).slice(0, 4000)
+}
+
+/** Convert Headers object to a plain record. */
+function headersToRecord(h: Headers): Record<string, string> {
+  const obj: Record<string, string> = {}
+  h.forEach((v, k) => { obj[k] = v })
+  return obj
+}
+
+/** Build a compact failure-log payload shared by all call sites. */
+function failurePayload(opts: {
+  method: string; url: string; reqHeaders: Record<string, string>; reqBody?: unknown
+  status?: number; resHeaders?: Record<string, string>; resBody?: unknown; error?: string
+}) {
+  const p: Record<string, any> = {
+    method: opts.method,
+    url: opts.url,
+    reqHeaders: sanitizeHeaders(opts.reqHeaders),
+    reqBody: sanitizeReqBody(opts.reqBody),
+  }
+  if (opts.status != null) {
+    p.resStatus = opts.status
+    p.resHeaders = opts.resHeaders || {}
+  }
+  if (opts.resBody !== undefined) {
+    const bodyStr = typeof opts.resBody === 'string' ? opts.resBody : JSON.stringify(opts.resBody)
+    p.resBody = bodyStr.slice(0, 4000)
+  }
+  if (opts.error) p.error = opts.error
+  return p
+}
+
 export interface HermesClientConfig {
   baseUrl: string
   apiKey?: string
@@ -96,20 +153,25 @@ export class HermesClient {
   ): Promise<JsonResult> {
     const { networkErrorMessage, networkErrorType, ...init } = opts || {}
     const url = this.#buildUrl(path)
-    const { method } = this.#buildInit(init)
+    const { method, headers, body } = this.#buildInit(init)
 
     try {
       const response = await this.#request(path, init)
       const data = await response.json()
 
       if (!response.ok) {
-        logger.error('hermes response error', { label: 'hermes', method, url, status: response.status, body: data })
+        logger.error('hermes response error', failurePayload({
+          method, url, reqHeaders: headers, reqBody: body,
+          status: response.status, resHeaders: headersToRecord(response.headers), resBody: data,
+        }))
       }
 
       return { data, status: response.status, ok: response.ok, headers: response.headers }
     } catch (err: any) {
       const msg = (networkErrorMessage || 'Hermes API Server unreachable: {message}').replace('{message}', err.message)
-      logger.error('hermes request failed', { label: 'hermes', method, url, message: err.message })
+      logger.error('hermes request failed', failurePayload({
+        method, url, reqHeaders: headers, reqBody: body, error: err.message,
+      }))
 
       const errorBody: { message: string; type?: string } = { message: msg }
       if (networkErrorType) {
@@ -169,15 +231,20 @@ export class HermesClient {
       const response = await fetch(url, { method, headers })
 
       if (!response.ok || !response.body) {
-        logger.error('hermes response error', { label: 'hermes', method: 'GET', url, status: response.status, type: 'sse' })
         const data = await response.json().catch(() => ({ error: { message: `Failed to connect to event stream: ${response.statusText}` } }))
+        logger.error('hermes response error', failurePayload({
+          method, url, reqHeaders: headers,
+          status: response.status, resHeaders: headersToRecord(response.headers), resBody: data,
+        }))
         return { response: null, ok: false, status: response.status || 502, data }
       }
 
       logger.info('hermes sse stream opened', { label: 'hermes', method: 'GET', url, status: response.status })
       return { response, ok: true, status: response.status }
     } catch (err: any) {
-      logger.error('hermes request failed', { label: 'hermes', method: 'GET', url, message: err.message, type: 'sse' })
+      logger.error('hermes request failed', failurePayload({
+        method, url, reqHeaders: headers, error: err.message,
+      }))
       return {
         response: null,
         ok: false,
@@ -240,15 +307,21 @@ export class HermesClient {
       const response = await fetch(url, { method, headers })
 
       if (!response.ok) {
-        const data = await response.json()
-        logger.error('hermes response error', { label: 'hermes', method: 'GET', url, status: response.status, body: data })
-        return { response: null, ok: false, status: response.status, data }
+        let resBody: unknown
+        try { resBody = await response.json() } catch { resBody = '[binary/error body]' }
+        logger.error('hermes response error', failurePayload({
+          method, url, reqHeaders: headers,
+          status: response.status, resHeaders: headersToRecord(response.headers), resBody,
+        }))
+        return { response: null, ok: false, status: response.status, data: resBody }
       }
 
       logger.info('hermes response ok', { label: 'hermes', method: 'GET', url, status: response.status })
       return { response, ok: true, status: response.status }
     } catch (err: any) {
-      logger.error('hermes request failed', { label: 'hermes', method: 'GET', url, message: err.message })
+      logger.error('hermes request failed', failurePayload({
+        method, url, reqHeaders: headers, error: err.message,
+      }))
       return {
         response: null,
         ok: false,

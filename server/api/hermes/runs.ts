@@ -1,5 +1,6 @@
 import { getUserIdFromCookie } from '~/server/utils/user-store'
 import { useHermesClient } from '~/server/utils/hermes-client'
+import { logger } from '~/server/utils/logger'
 
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
@@ -7,6 +8,8 @@ export default defineEventHandler(async (event) => {
 
   const userId = await getUserIdFromCookie(event)
   const sessionId = body.session_id || null
+
+  logger.info('create run', { label: 'run', userId, sessionId, inputLength: body.input?.length, model: body.model })
 
   // Build extra headers for session context
   const extraHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
@@ -32,6 +35,12 @@ export default defineEventHandler(async (event) => {
   const hermes = useHermesClient(event)
   const { data, status, headers } = await hermes.createRun(forwardedBody, extraHeaders)
   setResponseStatus(event, status)
+
+  if (status >= 400) {
+    logger.warn('create run: upstream error', { label: 'run', userId, sessionId, status, body: JSON.stringify(data).slice(0, 500) })
+  } else {
+    logger.info('create run: ok', { label: 'run', runId: data?.run_id, sessionId })
+  }
 
   // Forward session response headers back to client
   const resHeaders: Record<string, string> = {}
